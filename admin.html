@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OkoGram Admin</title>
+<style>
+:root{--bg:#0F1720;--p:#17212B;--p2:#1F2C39;--ink:#EAF1F7;--mute:#7F93A5;--acc:#3EA6F2;--red:#F0575C;--ok:#4CC38A}
+@media(prefers-color-scheme:light){:root{--bg:#E4ECF2;--p:#fff;--p2:#EEF3F7;--ink:#14202A;--mute:#6E8091}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,sans-serif;padding:12px;max-width:760px;margin:auto}
+h1{font-size:20px}input,button{font:inherit;border-radius:10px;border:1px solid #0003;padding:10px;background:var(--p2);color:var(--ink)}input{width:100%}
+button{cursor:pointer;background:var(--acc);color:#fff;border:0}button.g{background:var(--p2);color:var(--ink)}button.r{background:var(--red)}
+.c{background:var(--p);border-radius:14px;padding:12px;margin:10px 0}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1}
+.u{border-top:1px solid #ffffff14;padding:10px 0}.u small{color:var(--mute)}.b{display:inline-block;border-radius:8px;padding:1px 7px;font-size:12px;margin-left:4px;background:var(--p2)}
+.u .row button{flex:none;padding:6px 10px;font-size:13px}.hide{display:none}#err{color:var(--red)}
+</style></head><body>
+<h1>👁 OkoGram Admin</h1>
+<div id="login" class="c"><div class="row"><input id="cc" value="998" inputmode="numeric" style="max-width:80px"><input id="ph" placeholder="Номер телефона" inputmode="numeric"></div><p><input id="pw" type="password" placeholder="Пароль"></p><button id="go">Войти</button><p id="err"></p></div>
+<div id="main" class="hide">
+  <div class="c row"><span id="stat"></span><button class="g" id="out" style="flex:none">Выйти</button></div>
+  <div class="c"><b>Рассылка всем</b> <small style="color:var(--mute)">в чат «OkoGram» (1 запись на человека)</small><p><input id="bt" placeholder="Текст сообщения"></p><button id="bs">Отправить всем</button></div>
+  <div class="c"><input id="q" placeholder="Поиск: имя или номер"><div id="list"></div></div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+var firebaseConfig = {
+  apiKey: "AIzaSyDrQQHYWKThpzt5U342Sww0BUfMk-qUFSA",
+  authDomain: "okogram.firebaseapp.com",
+  projectId: "okogram",
+  storageBucket: "okogram.firebasestorage.app",
+  messagingSenderId: "1046672727690",
+  appId: "1:1046672727690:web:2f9afa392d3efc6d6b5773"
+};
+var $ = function(i){ return document.getElementById(i); }, dg = function(x){ return String(x).replace(/\D/g, ""); };
+firebase.initializeApp(firebaseConfig);
+var auth = firebase.auth(), db = firebase.firestore(), FV = firebase.firestore.FieldValue, users = [];
+function err(t){ $("err").textContent = t || ""; }
+$("go").onclick = function(){
+  err(); var p = dg($("cc").value) + dg($("ph").value);
+  auth.signInWithEmailAndPassword(p + "@okogram.app", $("pw").value).catch(function(e){ err(e.code === "auth/invalid-credential" ? "Неверный номер или пароль" : e.code); });
+};
+$("out").onclick = function(){ auth.signOut(); };
+auth.onAuthStateChanged(function(u){
+  if (!u) { $("login").classList.remove("hide"); $("main").classList.add("hide"); return; }
+  db.collection("admins").doc(u.uid).get().then(function(s){
+    if (!s.exists) { err("Нет доступа: ваш аккаунт не админ. UID: " + u.uid); auth.signOut(); return; }
+    $("login").classList.add("hide"); $("main").classList.remove("hide"); load();
+  }).catch(function(e){ err("Ошибка: " + e.code); auth.signOut(); });
+});
+function load(){
+  db.collection("users").limit(500).get().then(function(s){ users = s.docs.map(function(d){ var o = d.data(); o.id = d.id; return o; }); draw(); }).catch(function(e){ err(e.code); });
+}
+function draw(){
+  var q = $("q").value.trim().toLowerCase(), l = $("list"); l.textContent = "";
+  var bn = users.filter(function(u){ return u.banned; }).length, pr = users.filter(function(u){ return (u.premiumUntil || 0) > Date.now(); }).length;
+  $("stat").textContent = "Пользователей: " + users.length + " · заблокировано: " + bn + " · Premium: " + pr;
+  users.filter(function(u){ return !q || (u.name || "").toLowerCase().indexOf(q) >= 0 || String(u.phone || "").indexOf(q.replace(/\D/g, "") || "~") >= 0; }).slice(0, 100).forEach(function(u){
+    var d = document.createElement("div"); d.className = "u";
+    var t = document.createElement("div"); t.textContent = (u.name || "Без имени") + " ";
+    if (u.banned) tag(t, "🚫 бан"); if (u.dev) tag(t, "✔ разработчик"); if ((u.premiumUntil || 0) > Date.now()) tag(t, "💎 Premium до " + new Date(u.premiumUntil).toLocaleDateString("ru"));
+    var s = document.createElement("small"); s.textContent = "+" + (u.phone || "?") + " · ⭐ " + (u.stars || 0) + " · " + u.id; d.appendChild(t); d.appendChild(s);
+    var r = document.createElement("div"); r.className = "row"; r.style.marginTop = "6px";
+    btn(r, u.banned ? "Разбанить" : "Забанить", u.banned ? "g" : "r", function(){ if (confirm((u.banned ? "Разбанить " : "Забанить ") + u.name + "?")) upd(u, { banned:!u.banned }); });
+    btn(r, "⭐ Звёзды", "g", function(){ var n = parseInt(prompt("Сколько звёзд добавить? (можно отрицательное)", "100"), 10); if (n) upd(u, { stars:(u.stars || 0) + n }); });
+    btn(r, "💎 Premium +30д", "g", function(){ upd(u, { premiumUntil:Math.max(Date.now(), u.premiumUntil || 0) + 30 * 864e5 }); });
+    btn(r, "✔ Галочка", "g", function(){ upd(u, { dev:!u.dev }); });
+    btn(r, "✉ Написать", "g", function(){ var m = prompt("Сообщение для " + u.name); if (m) send([u], m); });
+    d.appendChild(r); l.appendChild(d);
+  });
+}
+function tag(p, t){ var b = document.createElement("span"); b.className = "b"; b.textContent = t; p.appendChild(b); }
+function btn(p, t, c, f){ var b = document.createElement("button"); b.textContent = t; b.className = c; b.onclick = f; p.appendChild(b); }
+function upd(u, patch){ db.collection("users").doc(u.id).update(patch).then(function(){ Object.assign(u, patch); draw(); }).catch(function(e){ alert("Ошибка: " + e.code); }); }
+function send(list, text){
+  var chunks = []; for (var i = 0; i < list.length; i += 400) chunks.push(list.slice(i, i + 400));
+  return Promise.all(chunks.map(function(c){ var b = db.batch(); c.forEach(function(u){ b.set(db.collection("users").doc(u.id).collection("inbox").doc(), { text:text, ts:FV.serverTimestamp() }); }); return b.commit(); }))
+    .then(function(){ alert("Отправлено: " + list.length); }).catch(function(e){ alert("Ошибка: " + e.code); });
+}
+$("bs").onclick = function(){ var t = $("bt").value.trim(); if (!t) return; if (confirm("Отправить " + users.length + " пользователям?")) send(users, t).then(function(){ $("bt").value = ""; }); };
+$("q").oninput = draw;
+</script></body></html>
